@@ -9,8 +9,9 @@ I use `gcc -O3 rpkconv.c -o rpkconv spng.o miniz.o -lm` where spng was compiled 
 
 ## GOALS
 - Fast streaming converter supporting large file sizes. (I don't know how large this can do, but it should theoretically be able to handle images many gigabytes in size.)
-- Faster than QOI
+- Faster and simpler than QOI
 - Pretty good compression (compared with QOI).
+- Minimal resources needed to encode and decode (e.g. for use in embedded systems)
 
 ## DETAILS
 See qoig.h
