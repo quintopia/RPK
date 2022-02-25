@@ -89,16 +89,14 @@
  * ┌─ OP_RUN_TYPE_2_ARG ────┬────────────────────────┐
  * │         Byte[0]        │         Byte[1]        │
  * │ 7  6  5  4  3  2  1  0 │ 7  6  5  4  3  2  1  0 │
- * │────────────┼───────────┼────────────┼───────────│
- * │     dr     │    dg     │     db     │     da    │
- * └────────────┴───────────┴────────────┴───────────┘
+ * │───────────────┼────────┼─────────┼──────────────│
+ * │       dr      │        dg        │      db      │
+ * └───────────────┴──────────────────┴──────────────┘
  * 
- * The new color is computed by xoring each group of four bits with the least significant
- * four bits of the corresponding component, exactly as per run type 1.
+ * The new color is computed by xoring each group of bits with the least significant
+ * corresponding bits of the corresponding component, exactly as per run type 1.
  * 
- * For a 3-channel image, the da bits should always be zeroed.
- * 
- * Run type 3 will similarly read an addition (channels*length) bytes, (channels) per new color.
+ * Run type 3 will similarly read an additional (channels*length) bytes, (channels) per new color.
  * 
  * ┌─ OP_RUN_TYPE_3_ARG ────┬────────────────────────┬────────────────────────┬────────────────────────┐
  * │         Byte[0]        │         Byte[1]        │         Byte[2]        │Byte[3] (iff channels=4)│
@@ -119,7 +117,9 @@
  * type of run again, the length of the run is extended and any arguments it will need are added to the buffer. If
  * the run type changes or an index becomes possible, the RUN op is output followed by all the buffered arguments.
  * 
- * There is one small exception to this scheme: Runs of type 1 will NOT be interrupted to output an INDEX.
+ * There are two small exceptions to this scheme: Runs of type 1 will NOT be interrupted to output an INDEX. Likewise,
+ * type two runs are NOT interrupted to begin a type 1 run. (Type 1 runs tend to be very short, so this is more likely
+ * to cost an extra byte than not.)
  */
 #include <stdlib.h>
 #include <string.h>
@@ -141,8 +141,8 @@
                           if (runtype) {\
                               fprintf(outfile,"%c",PACKRUN(runtype,run-1));\
                               fwrite(buffer,1,MIN(1<<(runtype-1),channels)*run,outfile);\
-                              runtype = -1;\
                               ct+=MIN(1<<(runtype-1),channels)*run+1;\
+                              runtype = -1;\
                           } else {\
                               if (run<=16) {\
                                   fprintf(outfile,"%c",PACKRUN(runtype,run-1));\
@@ -190,6 +190,7 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
     color row[width];
     color last,diff;
     color current = (color){.alpha=255};
+    color type2mask = (color){.red = 0xE0,.green = 0xC0,.blue = 0xE0,.alpha=0xFF};
     uint8_t buffer[128];
     unsigned int i;
     uint8_t runtype = -1;
@@ -219,29 +220,30 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
                     RPK_PRINT(128);
                     run=1;
                     runtype=0;
+                    hits[1]++;
                 }
                 continue;
             }
             diff.rgba = current.rgba^last.rgba;
-            if ((diff.rgba&0x03030303)==diff.rgba && run && runtype==1) goto smalldiff;
+            if (!(diff.rgba&0xFCFCFCFC) && run && runtype==1) goto smalldiff;
                 
             if (EQCOLOR(current,cache[HASH(current)])) {
                 RPK_PRINT(HASH(current));
             } else {
-                if ((diff.rgba&0x03030303)==diff.rgba) {
+                if (!(diff.rgba&0xFCFCFCFC) && runtype!=2) {
                     if (run && runtype!=1 || run==32) {
                         RPK_PRINT(128);
                         run=0;
                     }
                     smalldiff:buffer[run++]=(diff.alpha|diff.blue<<2|diff.green<<4|diff.red<<6)&0xFF;
                     runtype=1;
-                } else if ((diff.rgba&0x0F0F0F0F)==diff.rgba) {
+                } else if (!(diff.rgba&type2mask.rgba)) {
                     if (run && runtype!=2 || run==32) {
                         RPK_PRINT(128);
                         run=0;
                     }
-                    buffer[run*2]=(diff.red<<4|diff.green)&0xFF;
-                    buffer[run*2+1]=(diff.blue<<4|diff.alpha)&0xFF;
+                    buffer[run*2]=(diff.red<<3|LRS(diff.green,3))&0xFF;
+                    buffer[run*2+1]=(diff.green<<5|diff.blue&0x1F)&0xFF;
                     run++;
                     runtype=2;
                 } else {
@@ -263,6 +265,7 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
     }
     //Flush all buffers
     RPK_PRINT(0);
+    
     *outlen = ct;
     return 0;
 }
@@ -320,10 +323,9 @@ int rpk_decode(FILE *infile, size_t width, spng_ctx *ctx, size_t *outlen, uint8_
                             break;
                         case 2:
                             RPK_READ(&temp,1,2,infile);
-                            current.red ^= LRS(temp.red,4)&15;
-                            current.green ^= temp.red&15;
-                            current.blue ^= LRS(temp.green,4)&15;
-                            if (channels>3) current.alpha ^= temp.green&15;
+                            current.red ^= LRS(temp.red,3)&0x1F;
+                            current.green ^= (temp.red&7)<<3|LRS(temp.green,5);
+                            current.blue ^= temp.green&0x1F;
                             break;
                         case 3:
                             RPK_READ(&current,1,channels,infile);
