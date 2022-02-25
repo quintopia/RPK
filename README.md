@@ -17,7 +17,8 @@ I use `gcc -O3 rpkconv.c -o rpkconv spng.o miniz.o -lm` where spng was compiled 
 See qoig.h
 
 ## PERFORMANCE ANALYSIS
-Coming soon
+<https://esolang.rutteric.com/rpk.html>
 
 ## FUTURE STUFF?
 - animated rpk?
+- further compression improvements
