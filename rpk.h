@@ -198,7 +198,7 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
     uint8_t ret,done;
     uint32_t run = 0;
     unsigned long ct = 0;
-    int rows_read = 0;
+    //int rows_read = 0;
     
     
     /*spng_decode_row is a bad API. a sane API would return 0 after every successful read*/
@@ -220,7 +220,6 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
                     RPK_PRINT(128);
                     run=1;
                     runtype=0;
-                    hits[1]++;
                 }
                 continue;
             }
@@ -261,7 +260,7 @@ int rpk_encode(spng_ctx *ctx, size_t width, FILE *outfile, unsigned long *outlen
                 cache[HASH(current)]=current;
             }
         }
-        rows_read++;
+        //rows_read++;
     }
     //Flush all buffers
     RPK_PRINT(0);
@@ -275,22 +274,22 @@ int rpk_decode(FILE *infile, size_t width, spng_ctx *ctx, size_t *outlen, uint8_
     color current = (color){.alpha=255};
     color temp;
     unsigned int i;
-    uint8_t mask[3] = {3,15,255};
     uint8_t cbyte = 0;
     uint8_t tempbyte = 0;
     uint8_t runtype;
     uint32_t run=0;
     uint8_t row[width*channels];
-    unsigned int rows_read = 0;
+    //unsigned int rows_read = 0;
     int ret;
     *outlen = 0;
     
     do { 
         for (i=0;i<channels*width;i+=channels) {
-            if (!run) RPK_READ(&cbyte,1,1,infile);
+            if (run) goto runcont; 
+            RPK_READ(&cbyte,1,1,infile);
             switch(cbyte&0x80) {
                 case 0:
-                    current = cache[cbyte&0x7F];
+                    current = cache[cbyte];
                     break;
                 case 0x80:
                     if (!run) {
@@ -312,7 +311,7 @@ int rpk_decode(FILE *infile, size_t width, spng_ctx *ctx, size_t *outlen, uint8_
                         }
                         run++;
                     }
-                    run--;
+                    runcont:run--;
                     switch (runtype) {
                         case 1:
                             RPK_READ(&tempbyte,1,1,infile);
@@ -329,16 +328,15 @@ int rpk_decode(FILE *infile, size_t width, spng_ctx *ctx, size_t *outlen, uint8_
                             break;
                         case 3:
                             RPK_READ(&current,1,channels,infile);
-                            
-                    }   
+                    }
+                    cache[HASH(current)]=current;
             }
             memcpy(row+i,&current,channels);
-            cache[HASH(current)]=current;
             *outlen += channels;
         }
     
         ret = spng_encode_row(ctx,row,channels*width);
-        rows_read++;
+        //rows_read++;
     } while (!ret);
     //If we make it here, we're missing an end of bytestream code,
     //so there is probably something wrong with the file.
