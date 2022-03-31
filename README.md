@@ -14,7 +14,7 @@ I use `gcc -O3 rpkconv.c -o rpkconv spng.o miniz.o -lm` where spng was compiled 
 - Minimal resources needed to encode and decode (e.g. for use in embedded systems)
 
 ## DETAILS
-See qoig.h
+See rpk.h
 
 ## PERFORMANCE ANALYSIS
 <https://esolang.rutteric.com/rpk.html>
